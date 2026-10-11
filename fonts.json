@@ -1,0 +1,32 @@
+{
+  "_说明": [
+    "此文件告诉构建脚本：xelatex 应当用哪几个字体来排版。",
+    "每个列表按先后顺序尝试，build.py 自动挑第一个「本机已安装」的字体；",
+    "因此通常不必手改——换系统后能自动落到可用字体上。",
+    "若全部候选都缺失，脚本会把本机字体列表全部打印出来，方便你挑一个填进来。",
+    "",
+    "cjk   = 中文正文字体。必须有「粗体字重」，否则 \\textbf{中文} 会触发 xdvipdfmx 报错。",
+    "latin = 拉丁字母与音标。必须含 IPA 字形（ə ʊ ɪ ɔː），否则音标渲染为空白。",
+    "",
+    "经实测不能用于 xelatex 的字体：",
+    "  思源黑体/思源宋体 的可变字体（VF/TTF-VF）版本——xelatex 无法加载；",
+    "  Noto Sans SC 的某些版本——缺少粗体字重，会编译失败。",
+    "所以「思源」系列已从默认候选中移除；若你的系统装的是 OTF/OTC 静态版本，可以自行加到列表里试。"
+  ],
+
+  "cjk": [
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+    "SimSun",
+    "Noto Serif CJK SC"
+  ],
+
+  "latin": [
+    "Times New Roman",
+    "TeX Gyre Termes",
+    "Noto Serif",
+    "Liberation Serif",
+    "DejaVu Serif"
+  ]
+}

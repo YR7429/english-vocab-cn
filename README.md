@@ -12,7 +12,10 @@
 
 - **词条规模**：3185 条（Day 1–30 + 新增词汇）
 - **当前版本**：v0.1（释义为初稿，正在逐条校订）
-- **主要输出**：`build/总表.pdf`、`docx/总表.docx`
+- **主要输出**：`build/总表.pdf`（成品，随版本发布提供）、`docx/总表.docx`
+
+> **只想拿成品、不想装任何软件的话**：请到仓库的 **Releases** 页面直接下载 PDF。
+> 参与修订释义只需 Python，**不需要安装 LaTeX**。详见 [四、构建](#四构建)。
 
 ---
 
@@ -52,6 +55,7 @@
 ├── 考纲词汇含分级.txt        课标词汇表的文本提取（判定星级的依据）
 │
 ├── build.py                 构建脚本
+├── fonts.json               字体配置（换系统时可能要改）
 ├── irregular.py             不规则变化引擎
 ├── authority.py             词形表工具
 ├── tier_check.py            星级判定核查
@@ -60,10 +64,12 @@
 ├── audit.py                 全量校对
 ├── align_check.py           词义对应抽查
 │
-├── tex/                     LaTeX 片段（构建产物）
-├── build/                   PDF（构建产物）
-└── docx/                    Word（构建产物）
+├── tex/                     LaTeX 片段（构建产物，不入库）
+├── build/                   PDF（构建产物，不入库）
+└── docx/                    Word（构建产物，不入库）
 ```
+
+上表中标「构建产物」的三个目录**不在版本库里**。它们由 `build.py` 从 `defs/` 等源文件重新生成，内容每次构建一致，因此不必提交——这样仓库只保留可读可比的文本，改动一目了然。
 
 ---
 
@@ -84,18 +90,70 @@
 
 ## 四、构建
 
+### 先说清楚：你需要装什么
+
+**只想要成品 PDF 的读者** —— 什么都不用装。成品 PDF 随版本发布提供，到仓库 **Releases** 页面下载即可。
+
+**只修订释义、词形的贡献者** —— 只需要 Python 和 `python-docx` 一个库。本文档第三节的三类源文件都是纯文本，改完提交就行。
+
+**需要亲自动手排版、出 PDF 的维护者** —— 才需要装 TeX Live（见下文，有免安装的办法）。
+
+也就是说，**TeX Live 不是使用本项目的必需品**。这是个词表，不是 LaTeX 项目；LaTeX 只是我们自己出 PDF 用的工具。
+
+### 命令
+
 ```powershell
 cd 词表
-python build.py            # 全部重建
+python build.py            # 全部重建（有 TeX Live 时连 PDF 一起出）
 python build.py D04        # 只重建某一天
-python build.py --no-pdf   # 跳过 PDF 编译
+python build.py --no-pdf   # 只出 tex/ 与 docx/，不碰 PDF
 ```
 
-若命令行中无 `python`，改用完整路径：
+只差一个 `python-docx` 的话：
+
+```powershell
+python -m pip install python-docx
+```
+
+若命令行里没有 `python`，改用完整路径（把路径换成你自己的解释器）：
 
 ```powershell
 & 'D:\MinerU_Project\.venv\Scripts\python.exe' build.py
 ```
+
+### 没有装 TeX Live 会怎样
+
+**不会报错，也不会中断。** `build.py` 会自动寻找 `xelatex`：先看环境变量 `XELATEX`，再看系统 `PATH`，最后扫常见安装位置（`D:\texlive\…`、`/usr/local/texlive/…`、`/Library/TeX/texbin` 等）。
+
+找不到时，脚本会打印一段提示，把 `tex/` 和 `docx/` 正常生成完毕，然后**跳过 PDF**。你得到的 Word 文件是完整的、可以直接用的。
+
+想自己编 PDF 又不想装几个 GB 的完整 TeX Live，有三种省事的做法：
+
+| 办法 | 说明 |
+|---|---|
+| **下载成品 PDF** | 最省事。仓库 Releases 页面提供，不必自己编 |
+| **装 TinyTeX** | 约几百 MB，`xelatex` 命令同样可用。注意需另装 `ctex`、`fontspec`、`xeCJK`、`longtable`、`booktabs`、`xcolor`、`fancyhdr`、`geometry` 等宏包 |
+| **在 GitHub Actions 里编** | 若日后配置了自动构建，CI 会代劳，本机仍无需 TeX |
+
+### 字体：换系统时会遇到的事
+
+PDF 由 xelatex 排版，它**直接调用系统已安装的字体**。项目原先写死 Windows 上才有的字体，换到别的系统就会失败，因此现已改为配置驱动：
+
+- 字体候选写在 **`fonts.json`**（中文一组、拉丁一组，各按优先顺序排列）
+- `build.py` 会读取本机字体列表，**自动挑第一个装得上的**
+- 一个候选都挑不到时，脚本把本机字体名打印出来，供你填进 `fonts.json`
+
+因此通常情况下**不需要改任何代码**。Linux 上装 `fonts-noto-cjk`（对应 `Noto Sans CJK SC`）、macOS 上用系统自带的 `SimSun` 或思源的静态版本，都能自动命中。
+
+临时应急还可以用环境变量，不必动配置文件：
+
+```powershell
+$env:FONT_CJK='SimSun'; $env:FONT_LAT='DejaVu Serif'
+$env:XELATEX='D:\texlive\2025\bin\windows\xelatex.exe'
+python build.py
+```
+
+**关于 Word 文件。** `docx/` 不经过 xelatex，与字体是否安装无关。文件里写的字体名只是「建议」，最终由打开它的电脑决定用哪套字体显示——所以别人收到你的 `.docx` 不会因为缺字体而变成乱码或方框。
 
 ### 构建流水线
 
@@ -138,12 +196,12 @@ python authority.py check  # 词形表是否被改动过
 
 | 项目 | 取值 | 原因 |
 |---|---|---|
-| 中文正文字体 | **Microsoft YaHei** | 思源系列的可变字体（VF）无法被 xelatex 加载；Noto Sans SC 缺少粗体字重，会触发 `xdvipdfmx: Invalid font` 导致编译失败 |
-| 拉丁与音标字体 | **Times New Roman** | 常用字体中确认含 IPA 字形（ə ʊ ɪ ɔː） |
-| 生义标记 | **全角 ！**（U+FF01） | ❗（U+2757）与 ⚠（U+26A0）在本机字体中无字形，会导致编译失败 |
+| 中文正文字体 | 见 `fonts.json`（Windows 上默认 **Microsoft YaHei**） | 必须有粗体字重。思源系列的可变字体（VF）无法被 xelatex 加载；Noto Sans SC 的某些版本缺少粗体字重，会触发 `xdvipdfmx: Invalid font` 导致编译失败 |
+| 拉丁与音标字体 | 见 `fonts.json`（Windows 上默认 **Times New Roman**） | 必须含 IPA 字形（ə ʊ ɪ ɔː），否则音标渲染为空白 |
+| 生义标记 | **全角 ！**（U+FF01） | ❗（U+2757）与 ⚠（U+26A0）在常用字体中无字形，会导致编译失败 |
 | 行分隔 | `\hline`，0.3pt | PDF 版不能用隔行灰底：LaTeX 的 `\rowcolor` 会覆盖 `\hline`，使横线消失 |
 
-更换机器时，修改 `build.py` 顶部的 `CN`、`LAT` 两个常量即可。
+这几条是实测结论，换环境时值得留意。字体由 **`fonts.json`** 控制，脚本会自动挑选本机可用的候选，正常无需改代码；实在挑不到时，按第四节「字体」一节的提示把本机字体名填进去即可。
 
 ---
 
@@ -164,10 +222,10 @@ python authority.py check  # 词形表是否被改动过
 
 1. 阅读 [修订指南.md](修订指南.md)（面向修订者，不需要编程基础）
 2. 修订 `defs/` 下的释义文件，或 `词形表.txt` 中的词形
-3. 运行 `python build.py` 确认无误
+3. 运行 `python build.py` 确认无误（**没装 LaTeX 也没关系**，脚本会跳过 PDF，Word 文件照常生成）
 4. 提交改动，并简要说明依据（词典页码、课堂讲解等）
 
-**建议只提交 `defs/` 与 `词形表.txt` 的改动。** `build/`、`docx/`、`tex/` 均为构建产物，他人重新构建即可得到。
+**建议只提交 `defs/` 与 `词形表.txt` 的改动。** `build/`、`docx/`、`tex/` 均为构建产物，他人重新构建即可得到——提交它们只会让仓库迅速变大，而且二进制文件无法逐行比对。
 
 ---
 
