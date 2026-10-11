@@ -1,7 +1,7 @@
-# 换行符统一为 LF 存入仓库。
-# 说明：仓库内部一律用 LF 存储，Windows 上 checkout 时自动转成 CRLF，
-# 这样同一份仓库在 Windows、macOS、Linux 上都不会出现"整个文件都改了"的假差异。
-* text=auto
+# 换行符统一为 LF（仓库内与工作区都是）。
+# 这样在 Windows、macOS、Linux 上编辑与构建都不会出现"整个文件都改了"的假差异，
+# 也不会出现 "LF will be replaced by CRLF" 的反复转换警告。
+* text=auto eol=lf
 
 # 二进制文件不做换行符转换（本项目当前没有这类文件，留着以防日后加入图片等）
 *.pdf  binary
