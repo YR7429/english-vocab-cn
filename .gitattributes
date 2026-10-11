@@ -1,6 +1,11 @@
 # 换行符统一为 LF（仓库内与工作区都是）。
-# 这样在 Windows、macOS、Linux 上编辑与构建都不会出现"整个文件都改了"的假差异，
-# 也不会出现 "LF will be replaced by CRLF" 的反复转换警告。
+#
+# eol=lf 会强制检出为 LF，即使别人的 core.autocrlf=true 也不例外，因此
+# 这项设置本身就够用，克隆者无需改本地配置。
+#
+# 为什么统一为 LF：本项目所有脚本（authority.py、build.py）生成文件时都写 LF。
+# 若工作区是 CRLF，git 会反复提示 "LF will be replaced by CRLF"，也容易产生
+# "整个文件都被改动"的假差异。
 * text=auto eol=lf
 
 # 二进制文件不做换行符转换（本项目当前没有这类文件，留着以防日后加入图片等）
