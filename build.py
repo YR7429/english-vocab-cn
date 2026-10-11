@@ -238,7 +238,8 @@ def list_sources():
 # 格式：编号|词性+义项|变化|备注
 #   词性+义项：多组用 / 分隔；同组内义项用 ； 分隔
 #   变化：留空则由 irregular.py 自动补不规则形式
-#   备注：[课标无记录] 等
+#   备注：搭配、易混、读音等提示，渲染在「变化」列末尾；
+#         [课标无记录] 由权威表自动判定，不必手写
 POS_TOKEN = re.compile(r"^(linking v\.|modal v\.|aux\. v\.|(?:vt\.|vi\.)&(?:vt\.|vi\.)|n\.\s*\[[CU]\]&\[[CU]\]|"
                        r"n\.\s*\[[CU]\]|n\.|vt\.|vi\.|v\.|adj\.|adv\.|conj\.|prep\.|pron\.|det\.|num\.|int\.)\s*(.*)$")
 
@@ -320,9 +321,12 @@ def apply_defs(items):
         else:
             pd, note = defs, ""
             chg = chg or auto_change(CANON.get(eid, word))
-        # 「课标无记录」一律以权威表为准，并且只出现一次
-        chg = re.sub(r"\[课标无记录\]", "", chg).strip("； ;")
-        note = "[课标无记录]" if eid in KCMISS else ""
+        # 「课标无记录」由权威表自动判定；用户手写的备注保留，两者合并
+        # 注意：手写备注里若出现 [课标无记录]，一律丢弃——以权威表判定为准
+        chg  = re.sub(r"\[课标无记录\]", "", chg).strip("； ;")
+        note = re.sub(r"\[课标无记录\]", "", note or "").strip("； ;")
+        auto = "[课标无记录]" if eid in KCMISS else ""
+        note = "；".join(x for x in (auto, note) if x)   # 自动标注在前，手写备注在后
         out.append((eid, word, pd, chg, note))
     out.sort(key=lambda x: x[0])          # 全文统一按编号升序
     return out
@@ -617,16 +621,20 @@ def main():
         days.append(k); built.append((k, title, len(items)))
         print(f"  {k}: {len(items)} 词 -> tex/{k}.tex, docx/{k}_词汇表.docx")
 
-    write_prelude()
-    write_master(days)
-    print(f"  总表: tex/总表.tex （\\input {len(days)} 个片段）")
-
-    # 合并 DOCX
-    allitems = []
-    for k in days: allitems += load_day(srcs[k])
-    build_docx("考纲词汇详解总表（Day " + "–".join([days[0][1:], days[-1][1:]]) + "）",
-               allitems, os.path.join(DOCX, "总表.docx"))
-    print(f"  合并 DOCX: docx/总表.docx （{len(allitems)} 词）")
+    # 总表只在「全量构建」时生成。若只是重建某几天（python build.py D04），
+    # 只更新那几天的片段，否则会把总表覆盖成残缺版本。
+    if args:
+        print(f"\n  只重建了 {', '.join(days)}；tex/总表.tex 与 docx/总表.docx 未改动。")
+        print("  要更新总表（合并全部 31 天），请运行：python build.py")
+    else:
+        write_prelude()
+        write_master(days)
+        print(f"  总表: tex/总表.tex （\\input {len(days)} 个片段）")
+        allitems = []
+        for k in days: allitems += load_day(srcs[k])
+        build_docx("考纲词汇详解总表（Day " + "–".join([days[0][1:], days[-1][1:]]) + "）",
+                   allitems, os.path.join(DOCX, "总表.docx"))
+        print(f"  合并 DOCX: docx/总表.docx （{len(allitems)} 词）")
 
     if STRAY_BOLD:
         bar = "=" * 68
