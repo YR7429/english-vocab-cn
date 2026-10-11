@@ -1,0 +1,37 @@
+MIT License
+
+Copyright (c) 2026 考纲词汇详解词表 contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 关于词表内容
+
+以上 MIT 许可适用于本项目的**代码部分**（`*.py`、构建脚本等）。
+
+词表内容（`defs/*.txt`、`词形表.txt`、生成的 PDF 与 Word）由本项目贡献者共同编写，
+建议以 **CC BY-SA 4.0** 发布：允许自由使用、修改、再分发，但需署名，
+且衍生作品需采用相同许可。
+
+原始资料《普通高中英语课程标准（2017 年版 2025 年修订）》版权归
+中华人民共和国教育部所有，本项目仅引用其词汇表用于教学研究，
+不主张对该标准的任何权利。
+
+如你希望统一采用单一许可，请修改本文件并在 README 中说明。

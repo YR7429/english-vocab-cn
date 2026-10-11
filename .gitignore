@@ -1,0 +1,26 @@
+# 构建产物：可由 build.py 重新生成，不纳入版本管理
+tex/
+build/
+docx/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 词形表的校验哈希：各机器重建后可能不同
+.词形表.hash
+
+# 编辑器与系统临时文件
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# LaTeX 中间文件
+*.aux
+*.log
+*.out
+*.toc
