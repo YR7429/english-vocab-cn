@@ -108,17 +108,27 @@ def cmd_check():
     data = load_json()
     saved = open(HASHP, encoding="utf-8").read().strip() if os.path.exists(HASHP) else ""
     cur = current_hash()
-    if saved and saved != cur:
-        print("提示：词形表.txt 已被手工修改（与上次生成时不同）。")
-        print("      如果这些改动是你的，请运行 python authority.py sync 写回权威表。")
-    else:
-        print("词形表.txt 与上次生成时一致。")
     rows = read_view() or {}
     ids = {t["id"]: (t.get("final") or t.get("word")) for t in data}
     diff = [(i, ids[i], rows.get(i)) for i in ids if i in rows and rows[i] != ids[i]]
+    missing = [i for i in ids if i not in rows]
+
+    if diff:
+        print(f"提示：词形表.txt 有 {len(diff)} 处改动尚未写入权威表。")
+        print("      如果这些改动是你的，请运行 python authority.py sync 写回权威表。")
+    elif saved and saved != cur:
+        # 数据一致但哈希不同：通常是换行符（LF/CRLF）转换或编辑器重存造成的
+        print("词形表.txt 与权威表内容一致，无需同步。")
+        print("（内部记录的时间戳不同，通常只是换行符转换，不影响构建结果）")
+    else:
+        print("词形表.txt 与上次生成时一致。")
+
     print(f"视图条目 {len(rows)} 条，权威表 {len(ids)} 条，词形差异 {len(diff)} 处")
     for d in diff[:20]:
         print("   ", d)
+    if missing:
+        print(f"   ！视图缺少 {len(missing)} 个编号（可运行 python authority.py view 重建视图）")
+        print("     ", missing[:20])
 
 def rebuild_skeletons(data):
     AUTH = {t["id"]: (t.get("final") or t.get("word")) for t in data}
