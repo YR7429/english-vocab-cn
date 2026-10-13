@@ -41,7 +41,7 @@ def main():
 
     if apply and changes:
         tier_check.apply_changes(data, changes)
-        with open(JSONP, "w", encoding="utf-8") as f:
+        with open(JSONP, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
             f.write("\n")
         bar = "=" * 68

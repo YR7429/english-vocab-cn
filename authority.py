@@ -44,7 +44,7 @@ def save_json(data):
         for k in t:
             if k not in o: o[k] = t[k]
         out.append(o)
-    with open(JSONP, "w", encoding="utf-8") as f:
+    with open(JSONP, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
         f.write("\n")
 
@@ -71,9 +71,9 @@ def write_view(data):
         "# 改完保存，然后运行：  python authority.py sync\n"
         "#\n"
     )
-    open(VIEWP, "w", encoding="utf-8").write(header + body)
+    open(VIEWP, "w", encoding="utf-8", newline="\n").write(header + body)
     h = hashlib.sha256((header + body).encode("utf-8")).hexdigest()
-    open(HASHP, "w", encoding="utf-8").write(h)
+    open(HASHP, "w", encoding="utf-8", newline="\n").write(h)
     return h, len(view_rows(data))
 
 def read_view():
@@ -146,7 +146,7 @@ def rebuild_skeletons(data):
         for i in sel:
             L.append(f"({i}, {AUTH[i]!r}),")
         L.append("]")
-        open(os.path.join(TABLE, f"Day{num:02d}.py"), "w", encoding="utf-8").write("\n".join(L) + "\n")
+        open(os.path.join(TABLE, f"Day{num:02d}.py"), "w", encoding="utf-8", newline="\n").write("\n".join(L) + "\n")
         n += 1
     return n
 

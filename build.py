@@ -484,7 +484,7 @@ def day_tex(day, title, items):
 
 def write_prelude():
     p = os.path.join(TEXDIR, "00_前言.tex")
-    open(p, "w", encoding="utf-8").write(
+    open(p, "w", encoding="utf-8", newline="\n").write(
         r"\begin{center}" "\n"
         r"{\LARGE\bfseries 考纲词汇详解总表}\\[2mm]" "\n"
         r"{\small 星级：\textbf{**} 最重要\quad\textbf{*} 次之\quad 无星号 最弱\quad|\quad"
@@ -504,7 +504,7 @@ def write_master(days, extra_day=None):
         L.append(r"\clearpage")
         L.append(r"\input{" + extra_day + "}")
     L.append(r"\end{document}")
-    open(p, "w", encoding="utf-8").write("\n".join(L))
+    open(p, "w", encoding="utf-8", newline="\n").write("\n".join(L))
 
 # ---------------- DOCX ----------------
 def build_docx(title, items, path, merged_note=""):
@@ -615,7 +615,7 @@ def main():
         title = "新增词汇" if k == "D31" else f"{k} · 考纲第 {id0}-{id1} 词"
         # tex 片段
         p = os.path.join(TEXDIR, k + ".tex")
-        open(p, "w", encoding="utf-8").write(day_tex(k, title, items))
+        open(p, "w", encoding="utf-8", newline="\n").write(day_tex(k, title, items))
         # docx
         build_docx(title, items, os.path.join(DOCX, f"{k}_词汇表.docx"))
         days.append(k); built.append((k, title, len(items)))
