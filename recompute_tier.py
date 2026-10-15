@@ -3,7 +3,7 @@
 星级重算工具
 
 背景：损坏词被人工还原成真实词形后（例如 SOITOw -> sorrow / pieidds -> pie），
-      该条的星级判定仍是旧的「原文星号」，于是成品里一直挂着「[课标无记录]」。
+      该条的星级判定仍是旧的「原文星号」，于是成品里的星号会是错的。
       本工具重新对照课标文件，修正这类条目的星级。
 
 用法：
@@ -30,7 +30,7 @@ def main():
     print(f"权威表 {len(data)} 条｜课标索引 {len(kc)} 键")
     print(f"需要修正的星级判定：{len(changes)} 处")
     for eid, w, old_kc, old_src, new_tier in changes[:60]:
-        new = f"课标 {new_tier} 星" if new_tier is not None else "课标无记录（沿用原文星号）"
+        new = f"课标 {new_tier} 星" if new_tier is not None else "沿用原文星号（课标查不到）"
         print(f"   {eid:>5} {w:<24} 旧: tier_kc={old_kc} src={old_src}  ->  {new}")
     if len(changes) > 60:
         print(f"   ...另有 {len(changes) - 60} 处")

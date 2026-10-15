@@ -4,7 +4,7 @@
 
 用途：检查权威表里每一条的「星级来源」是否与课标文件一致。
 典型失配：损坏词被还原成真实词形后（SOITOw -> sorrow），
-          该条的星级判定仍是旧的「原文星号」，于是成品里一直挂着 [课标无记录]。
+          该条的星级判定仍是旧的「原文星号」，于是成品里的星号会是错的。
 
 被 build.py（构建时提示）与 recompute_tier.py（人工重算）共用，保证判定口径一致。
 """
@@ -103,11 +103,11 @@ def warn_if_needed(max_show=5):
     print(f"⚠️  检测到 {len(changes)} 条「星级判定待重算」——通常是还原了损坏词却没重算星级")
     print(bar)
     for eid, w, old_kc, old_src, new_tier in changes[:max_show]:
-        new = f"课标 {new_tier} 星" if new_tier is not None else "课标无记录（沿用原文星号）"
+        new = f"课标 {new_tier} 星" if new_tier is not None else "沿用原文星号（课标查不到）"
         print(f"   {eid:>5} {w:<24} 旧: {old_src}  ->  应为: {new}")
     if len(changes) > max_show:
         print(f"   ...另有 {len(changes) - max_show} 条")
-    print("\n   本次构建仍会照旧渲染（成品里可能显示错误的 [课标无记录]）。")
+    print("\n   本次构建仍会照旧渲染（成品里的星号可能不对）。")
     print("   修正请运行：  python recompute_tier.py --apply")
     print(bar + "\n")
     return len(changes)

@@ -3,24 +3,29 @@ r"""
 词表构建脚本（单一数据源 -> LaTeX + DOCX + PDF）
 
 数据源：
-  词表/DXX_*.py   或   词表/DXX_*.json      （每天一个文件，人工编辑只改这里）
-  step4_wordlist.json                      （编号->星级，自动读取，勿手改）
+  词表/days/DayXX.py                       骨架：每天含哪些编号（自动生成，勿手改）
+  step4_wordlist.json                      编号 -> 词形、星级（自动读取，勿手改）
+  defs/*.txt                               释义、变化、备注
 
 输出：
   词表/tex/00_前言.tex            总表前言与表头
-  词表/tex/DXX.tex                每天一张表（\input 片段）
-  词表/tex/总表.tex               总表：\input 各天 + 非30天词汇
+  词表/tex/DayXX.tex              每天一张表（\input 片段）
+  词表/tex/总表.tex               总表：\input 各天（按编号升序）
+  词表/tex/总表_字母序.tex         同样内容，全局按字母表排序
+  词表/docx/DayXX_词汇表.docx     每天一个 Word 文件
+  词表/docx/总表.docx             合并的 Word（按编号升序）
+  词表/docx/总表_字母序.docx       合并的 Word（全局按字母表排序）
   词表/build/总表.pdf             xelatex 编译结果
-  词表/docx/DXX_词汇表.docx       每天一个 Word 文件
-  词表/docx/总表.docx             合并的 Word 文件
+  词表/build/总表_字母序.pdf       字母序版本
 
 标记约定（数据源里写这些）：
-  ⚠ 或 !!     无法联想的熟词生义  -> LaTeX 渲染为 \EX，DOCX 渲染为 ⚠
+  ！ 或 !!     无法联想的熟词生义  -> LaTeX 渲染为 \EX
   {b}…{/b} 或 **…**   可联想的引申义 -> 黑体/加粗
 用法：
-  python build.py            # 全部构建
-  python build.py D01 D02    # 只构建指定天
-  python build.py --no-pdf   # 不编译 PDF
+  python build.py                # 全部构建
+  python build.py D01 D02        # 只构建指定天（不会动总表）
+  python build.py --no-pdf       # 不编译 PDF
+  python build.py --alpha-only   # 只出字母序总表（核验词形、星级用）
 """
 import sys, os, re, json, glob, subprocess, importlib.util
 from docx import Document
@@ -226,20 +231,23 @@ def load_day(path):
     return apply_defs(items)
 
 def list_sources():
+    """骨架文件统一放在 days/ 下（也兼容根目录下的旧式 DXX_*.py）"""
     out = {}
-    pats = (glob.glob(os.path.join(ROOT, "D[0-9][0-9]_*.py")) + glob.glob(os.path.join(ROOT, "Day[0-9][0-9].py"))
-            + glob.glob(os.path.join(ROOT, "D[0-9][0-9]_*.json")) + glob.glob(os.path.join(ROOT, "Day[0-9][0-9].json")))
+    pats = []
+    for base in (os.path.join(ROOT, "days"), ROOT):
+        for pat in ("Day[0-9][0-9].py", "Day[0-9][0-9].json",
+                    "D[0-9][0-9]_*.py", "D[0-9][0-9]_*.json"):
+            pats += glob.glob(os.path.join(base, pat))
     for p in sorted(set(pats)):
         m = re.match(r"^(?:D|Day)(\d{2})", os.path.basename(p))
         if m: out["D" + m.group(1)] = p
     return out
 
 # ---------------- 释义文件（defs/*.txt） ----------------
-# 格式：编号|词性+义项|变化|备注
+# 格式：编号|词性+义项|变化或备注|        （恰好 4 段、3 个竖线）
 #   词性+义项：多组用 / 分隔；同组内义项用 ； 分隔
-#   变化：留空则由 irregular.py 自动补不规则形式
-#   备注：搭配、易混、读音等提示，渲染在「变化」列末尾；
-#         [课标无记录] 由权威表自动判定，不必手写
+#   第3段：不规则变化，或搭配/易混/读音等备注。留空则由 irregular.py 自动补不规则形式
+#   第4段：一律留空（旧文件里写在第4段的备注会被自动并入第3段）
 POS_TOKEN = re.compile(r"^(linking v\.|modal v\.|aux\. v\.|(?:vt\.|vi\.)&(?:vt\.|vi\.)|n\.\s*\[[CU]\]&\[[CU]\]|"
                        r"n\.\s*\[[CU]\]|n\.|vt\.|vi\.|v\.|adj\.|adv\.|conj\.|prep\.|pron\.|det\.|num\.|int\.)\s*(.*)$")
 
@@ -280,7 +288,8 @@ def split_by_semicolon(text):
     return [x.strip() for x in out if x.strip()]
 
 def load_defs():
-    """读 defs/*.txt，返回 {编号: (posdefs, change, note)}"""
+    """读 defs/*.txt，返回 {编号: (posdefs, change, note)}
+    第4段（末段）已废弃：若仍有内容，自动并入第3段，保证两种写法都能正常渲染。"""
     d = {}
     folder = os.path.join(ROOT, "defs")
     if not os.path.isdir(folder): return d
@@ -294,17 +303,18 @@ def load_defs():
             except ValueError: continue
             posdefs = parse_posdefs(parts[1].strip())
             chg = normalize_mark(parts[2]) if len(parts) > 2 and parts[2].strip() else ""
-            note = parts[3].strip() if len(parts) > 3 else ""
-            d[eid] = (posdefs, chg, note)
+            tail = parts[3].strip() if len(parts) > 3 else ""
+            if tail:                     # 兼容旧写法：末段有内容则并到「变化」之后
+                chg = (chg + "；" if chg else "") + tail
+            d[eid] = (posdefs, chg, "")
     return d
 
-# ---------------- 课标无记录判定（以权威表为准，覆盖子代理的判断） ----------------
-KCMISS = set()
-def load_kcmiss():
-    p = os.path.join(ROOT, "step4_wordlist.json")
-    if not os.path.exists(p): return set()
-    return {t["id"] for t in json.load(open(p, encoding="utf-8")) if t.get("tier_src") != "课标"}
-KCMISS = load_kcmiss()
+# ---------------- 排序键 ----------------
+def alpha_key(word):
+    """字母序键：忽略大小写与空格/连字符，非字母字符不参与比较。
+    因此 'by accident'、'byaccident'、'By accident' 会排在一起。"""
+    s = re.sub(r"[^0-9a-z]+", "", str(word).lower())
+    return (s, str(word).lower())
 
 DEFS = None
 def apply_defs(items):
@@ -321,12 +331,6 @@ def apply_defs(items):
         else:
             pd, note = defs, ""
             chg = chg or auto_change(CANON.get(eid, word))
-        # 「课标无记录」由权威表自动判定；用户手写的备注保留，两者合并
-        # 注意：手写备注里若出现 [课标无记录]，一律丢弃——以权威表判定为准
-        chg  = re.sub(r"\[课标无记录\]", "", chg).strip("； ;")
-        note = re.sub(r"\[课标无记录\]", "", note or "").strip("； ;")
-        auto = "[课标无记录]" if eid in KCMISS else ""
-        note = "；".join(x for x in (auto, note) if x)   # 自动标注在前，手写备注在后
         out.append((eid, word, pd, chg, note))
     out.sort(key=lambda x: x[0])          # 全文统一按编号升序
     return out
@@ -464,7 +468,10 @@ TABLE_HEAD = (r"\begin{longtable}{N W D C}" "\n"
 STRAY_BOLD = []   # 记录残留 ** 的条目，构建结束时报出
 TABLE_TAIL = "\\bottomrule\n\\end{longtable}\n"
 
-def day_tex(day, title, items):
+def day_tex(day, title, items, sort=None):
+    """sort=None 时按传入顺序（编号升序）；sort='alpha' 时按字母表排序"""
+    if sort == "alpha":
+        items = sorted(items, key=lambda x: alpha_key(x[1]))
     L = [f"% ==== {title} ====\n"]
     L.append(r"\vspace{2mm}{\large\bfseries " + tex_escape(title) + r"}\par\vspace{1.5mm}")
     L.append(TABLE_HEAD)
@@ -482,32 +489,35 @@ def day_tex(day, title, items):
     L.append(TABLE_TAIL)
     return "\n".join(L) + "\n"
 
-def write_prelude():
-    p = os.path.join(TEXDIR, "00_前言.tex")
+def write_prelude(path=None, alpha=False):
+    p = path or os.path.join(TEXDIR, "00_前言.tex")
+    head = (r"{\LARGE\bfseries 考纲词汇详解总表}" if not alpha
+            else r"{\LARGE\bfseries 考纲词汇详解总表（字母序）}")
     open(p, "w", encoding="utf-8", newline="\n").write(
         r"\begin{center}" "\n"
-        r"{\LARGE\bfseries 考纲词汇详解总表}\\[2mm]" "\n"
+        + head + "\\\\[2mm]\n"
         r"{\small 星级：\textbf{**} 最重要\quad\textbf{*} 次之\quad 无星号 最弱\quad|\quad"
-        r"\EX{} 无法联想的熟词生义\quad|\quad \textbf{黑体} 可联想的引申义\quad|\quad"
-        r"[课标无记录] 课标文件中查不到该词}" "\n"
+        r"\EX{} 无法联想的熟词生义\quad|\quad \textbf{黑体} 可联想的引申义}" "\n"
         r"\end{center}" "\n"
         r"\vspace{2mm}" "\n")
     return p
 
-def write_master(days, extra_day=None):
-    p = os.path.join(TEXDIR, "总表.tex")
-    L = [preamble(), r"\input{00_前言}", "\n"]
+def write_master(days, path=None, alpha=False, prelude="00_前言"):
+    """总表：只引用各天的片段，内容不重复维护"""
+    p = path or os.path.join(TEXDIR, "总表.tex")
+    L = [preamble(), r"\input{" + prelude + "}", "\n"]
     for d in days:
         L.append(r"\input{" + d + "}")
         L.append(r"\clearpage" if d != days[-1] else "")
-    if extra_day:
-        L.append(r"\clearpage")
-        L.append(r"\input{" + extra_day + "}")
     L.append(r"\end{document}")
     open(p, "w", encoding="utf-8", newline="\n").write("\n".join(L))
+    return p
 
 # ---------------- DOCX ----------------
-def build_docx(title, items, path, merged_note=""):
+def build_docx(title, items, path, sort=None, merged_note=""):
+    """sort=None 按传入顺序；sort='alpha' 按字母表排序"""
+    if sort == "alpha":
+        items = sorted(items, key=lambda x: alpha_key(x[1]))
     doc = Document()
     sec = doc.sections[0]
     sec.page_width, sec.page_height = Cm(21.0), Cm(29.7)
@@ -529,7 +539,7 @@ def build_docx(title, items, path, merged_note=""):
     _font(p.add_run("词性：n. [C] 可数 / n. [U] 不可数 / vt. 及物 / vi. 不及物 / linking v. 连系动词　｜　"
                     + EX_SYM + " 无法联想的熟词生义　｜　"), 8)
     _font(p.add_run("黑体"), 8, True)
-    _font(p.add_run(" 可联想的引申义　｜　[课标无记录] 课标文件中查不到该词"), 8)
+    _font(p.add_run(" 可联想的引申义"), 8)
 
     W = [0.85, 2.85, 9.5, 3.4]
     t = doc.add_table(rows=1, cols=4)
@@ -585,10 +595,50 @@ def build_docx(title, items, path, merged_note=""):
     ly = OxmlElement("w:tblLayout"); ly.set(qn("w:type"), "fixed"); tbl.tblPr.append(ly)
     doc.save(path)
 
+# ---------------- PDF 编译（可选步骤，失败不影响 tex/ 与 docx/ 的产出） ----------------
+def compile_pdf(tex_name, out_name):
+    """在 tex/ 目录编译 tex_name，成功后把 PDF 复制到 build/out_name"""
+    global XELATEX
+    if XELATEX is None:
+        XELATEX = find_texlive()
+    if not XELATEX:
+        return None
+    print(f"  编译 {tex_name} ... （{XELATEX}）")
+    try:
+        r = subprocess.run([XELATEX, "-interaction=nonstopmode", "-halt-on-error", tex_name],
+                           cwd=TEXDIR, capture_output=True, text=True, errors="replace",
+                           timeout=1800)
+    except Exception as exc:
+        print(f"  PDF 编译未能执行：{exc}")
+        return None
+    out = os.path.join(TEXDIR, os.path.splitext(tex_name)[0] + ".pdf")
+    if os.path.exists(out) and (r.returncode == 0 or "Output written" in (r.stdout or "")):
+        import shutil; shutil.copy2(out, os.path.join(BUILD, out_name))
+        print(f"  PDF: build/{out_name}")
+        return os.path.join(BUILD, out_name)
+    print(f"  {tex_name} 编译失败，日志尾部：\n" + (r.stdout or "")[-2000:])
+    print("  （tex/ 与 docx/ 已正常生成，可先使用；字体问题请检查 fonts.json）")
+    return None
+
+def no_tex_hint():
+    print("\n" + "=" * 68)
+    print("  未找到 xelatex —— 已跳过 PDF 生成（其他产物不受影响）")
+    print("=" * 68)
+    print("  · Word 文件已生成：docx/ 目录，可直接使用")
+    print("  · LaTeX 源文件已生成：tex/ 目录，装了 TeX Live 的机器可直接编译")
+    print("  · 通常不必自己装 TeX Live（完整安装约需数 GB）：")
+    print("      成品 PDF 随版本发布提供，见仓库 Releases 页面")
+    print("  · 若确实要自行编译，装 TeX Live 后重跑 python build.py 即可；")
+    print("      也可用环境变量指定路径：XELATEX=<xelatex 的完整路径>")
+    print("=" * 68 + "\n")
+
 # ---------------- 主流程 ----------------
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    no_pdf = "--no-pdf" in sys.argv
+    argv   = sys.argv[1:]
+    no_pdf = "--no-pdf" in argv
+    only_alpha = "--alpha-only" in argv
+    no_alpha   = "--no-alpha" in argv
+    args = [a for a in argv if not a.startswith("--")]
 
     # 构建前提示：是否有条目的星级判定待重算（只提示，不中断）
     try:
@@ -599,42 +649,57 @@ def main():
 
     srcs = list_sources()
     if not srcs:
-        print("没有找到数据源文件（词表/DXX_*.py 或 .json）"); return
+        print("没有找到骨架文件（应为 词表/days/Day01.py … Day31.py）"); return
 
     # 先定字体：tex/ 源文件里要写入具体字体名（供日后编译或他人接手）
     pick_fonts()
     if CN or LAT:
         print(f"  字体：中文 {CN or '（未找到，见 fonts.json）'} ｜ 拉丁 {LAT or '（未找到，见 fonts.json）'}")
 
-    keys = [k for k in sorted(srcs) if not args or k in args]
-    days = []
-    built = []
+    keys  = [k for k in sorted(srcs) if not args or k in args]
+    days, allitems = [], []
     for k in keys:
         items = load_day(srcs[k])
         id0, id1 = items[0][0], items[-1][0]
         title = "新增词汇" if k == "D31" else f"{k} · 考纲第 {id0}-{id1} 词"
-        # tex 片段
-        p = os.path.join(TEXDIR, k + ".tex")
-        open(p, "w", encoding="utf-8", newline="\n").write(day_tex(k, title, items))
-        # docx
+        allitems += items
+        open(os.path.join(TEXDIR, k + ".tex"), "w", encoding="utf-8", newline="\n") \
+            .write(day_tex(k, title, items))
         build_docx(title, items, os.path.join(DOCX, f"{k}_词汇表.docx"))
-        days.append(k); built.append((k, title, len(items)))
+        days.append(k)
         print(f"  {k}: {len(items)} 词 -> tex/{k}.tex, docx/{k}_词汇表.docx")
 
     # 总表只在「全量构建」时生成。若只是重建某几天（python build.py D04），
     # 只更新那几天的片段，否则会把总表覆盖成残缺版本。
-    if args:
+    partial = bool(args) and not only_alpha
+    if partial:
         print(f"\n  只重建了 {', '.join(days)}；tex/总表.tex 与 docx/总表.docx 未改动。")
         print("  要更新总表（合并全部 31 天），请运行：python build.py")
     else:
-        write_prelude()
-        write_master(days)
-        print(f"  总表: tex/总表.tex （\\input {len(days)} 个片段）")
-        allitems = []
-        for k in days: allitems += load_day(srcs[k])
-        build_docx("考纲词汇详解总表（Day " + "–".join([days[0][1:], days[-1][1:]]) + "）",
-                   allitems, os.path.join(DOCX, "总表.docx"))
-        print(f"  合并 DOCX: docx/总表.docx （{len(allitems)} 词）")
+        span = "Day " + "–".join([days[0][1:], days[-1][1:]])
+        if not only_alpha:
+            write_prelude()
+            write_master(days)
+            print(f"  总表: tex/总表.tex （\\input {len(days)} 个片段，按编号升序）")
+            build_docx("考纲词汇详解总表（" + span + "）", allitems,
+                       os.path.join(DOCX, "总表.docx"))
+            print(f"  合并 DOCX: docx/总表.docx （{len(allitems)} 词）")
+        if not no_alpha:
+            # 字母序版本：同样是 \input 引用，只是各片段内部改成按字母表排序
+            write_prelude(os.path.join(TEXDIR, "00_前言_字母序.tex"), alpha=True)
+            for k in days:
+                items = load_day(srcs[k])
+                id0, id1 = items[0][0], items[-1][0]
+                title = "新增词汇" if k == "D31" else f"{k} · 考纲第 {id0}-{id1} 词"
+                open(os.path.join(TEXDIR, "A_" + k + ".tex"), "w", encoding="utf-8", newline="\n") \
+                    .write(day_tex(k, title, items, sort="alpha"))
+            write_master(["A_" + k for k in days],
+                         path=os.path.join(TEXDIR, "总表_字母序.tex"),
+                         alpha=True, prelude="00_前言_字母序")
+            print(f"  字母序总表: tex/总表_字母序.tex （{len(allitems)} 词，全局 A→Z）")
+            build_docx("考纲词汇详解总表 · 字母序（" + span + "）", allitems,
+                       os.path.join(DOCX, "总表_字母序.docx"), sort="alpha")
+            print(f"  合并 DOCX: docx/总表_字母序.docx （{len(allitems)} 词）")
 
     if STRAY_BOLD:
         bar = "=" * 68
@@ -651,38 +716,20 @@ def main():
         print("\n  （--no-pdf：已跳过 PDF 编译。tex/ 与 docx/ 均已生成。）")
         return
 
-    # —— PDF 是可选步骤：没装 TeX Live 或没装字体，都不影响 tex/ 与 docx/ 的产出 ——
+    if partial:
+        print("\n  （只重建了部分天，未编译 PDF。要出成品请运行：python build.py）")
+        return
+
     global XELATEX
     XELATEX = find_texlive()
     if not XELATEX:
-        print("\n" + "=" * 68)
-        print("  未找到 xelatex —— 已跳过 PDF 生成（其他产物不受影响）")
-        print("=" * 68)
-        print("  · Word 文件已生成：docx/ 目录，可直接使用")
-        print("  · LaTeX 源文件已生成：tex/ 目录，装了 TeX Live 的机器可直接编译")
-        print("  · 通常不必自己装 TeX Live（完整安装约需数 GB）：")
-        print("      成品 PDF 随版本发布提供，见仓库 Releases 页面")
-        print("  · 若确实要自行编译，装 TeX Live 后重跑 python build.py 即可；")
-        print("      也可用环境变量指定路径：XELATEX=<xelatex 的完整路径>")
-        print("=" * 68 + "\n")
+        no_tex_hint()
         return
-
     warn_missing_glyphs()
-    print(f"  编译 PDF ... （{XELATEX}）")
-    try:
-        r = subprocess.run([XELATEX, "-interaction=nonstopmode", "-halt-on-error", "总表.tex"],
-                           cwd=TEXDIR, capture_output=True, text=True, errors="replace",
-                           timeout=1800)
-    except Exception as exc:
-        print(f"  PDF 编译未能执行：{exc}")
-        return
-    out = os.path.join(TEXDIR, "总表.pdf")
-    if os.path.exists(out) and (r.returncode == 0 or "Output written" in (r.stdout or "")):
-        import shutil; shutil.copy2(out, os.path.join(BUILD, "总表.pdf"))
-        print("  PDF: build/总表.pdf")
-    else:
-        print("  PDF 编译失败，日志尾部：\n" + (r.stdout or "")[-2000:])
-        print("  （tex/ 与 docx/ 已正常生成，可先使用；字体问题请检查 fonts.json）")
+    if not only_alpha:
+        compile_pdf("总表.tex", "总表.pdf")
+    if not no_alpha:
+        compile_pdf("总表_字母序.tex", "总表_字母序.pdf")
 
 if __name__ == "__main__":
     main()
