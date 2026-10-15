@@ -9,7 +9,7 @@
 三种用法：
   python authority.py fmt       把 json 重新排版（缩进、一行一条），方便查看
   python authority.py view      由 json 生成 词形表.txt
-  python authority.py sync      从 词形表.txt 读回改动，更新 json，并重建骨架
+  python authority.py sync      从 词形表.txt 读回改动，更新 json，并重建 days/ 下的骨架
   python authority.py check     只校验 词形表.txt 是否与 json 一致
 """
 import os, re, sys, json, hashlib, shutil
@@ -131,9 +131,12 @@ def cmd_check():
         print("     ", missing[:20])
 
 def rebuild_skeletons(data):
+    """重建 days/DayXX.py 骨架文件（33 个文件放一个文件夹，免得仓库根目录太乱）"""
     AUTH = {t["id"]: (t.get("final") or t.get("word")) for t in data}
     DAY  = {t["id"]: t.get("day") for t in data}
     Q3 = '"' * 3
+    outdir = os.path.join(TABLE, "days")
+    os.makedirs(outdir, exist_ok=True)
     n = 0
     for num in range(1, 32):
         sel = sorted(i for i, d in DAY.items() if (d == "新增" and num == 31) or d == f"Day{num}")
@@ -146,7 +149,7 @@ def rebuild_skeletons(data):
         for i in sel:
             L.append(f"({i}, {AUTH[i]!r}),")
         L.append("]")
-        open(os.path.join(TABLE, f"Day{num:02d}.py"), "w", encoding="utf-8", newline="\n").write("\n".join(L) + "\n")
+        open(os.path.join(outdir, f"Day{num:02d}.py"), "w", encoding="utf-8", newline="\n").write("\n".join(L) + "\n")
         n += 1
     return n
 
@@ -169,7 +172,7 @@ def cmd_sync():
     save_json(data)
     h, n = write_view(data)
     made = rebuild_skeletons(data)
-    print(f"已同步 {len(fixed)} 处词形改动，重建骨架 {made} 个文件")
+    print(f"已同步 {len(fixed)} 处词形改动，重建骨架 {made} 个文件（days/）")
     for f in fixed[:40]:
         print(f"   {f[0]}: {f[1]}  ->  {f[2]}")
     for s in skipped:
