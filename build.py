@@ -28,6 +28,7 @@ r"""
   python build.py --alpha-only   # 只出字母序总表（核验词形、星级用）
 """
 import sys, os, re, json, glob, subprocess, importlib.util
+import ids_util
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -212,7 +213,6 @@ def load_day(path):
     name = os.path.basename(path)
     if path.endswith(".json"):
         raw = json.load(open(path, encoding="utf-8"))
-        ids = [int(e[0]) for e in raw]
     else:
         spec = importlib.util.spec_from_file_location("mod_" + os.path.splitext(name)[0], path)
         mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
@@ -221,9 +221,9 @@ def load_day(path):
             for k in dir(mod):
                 if k.startswith("D") and isinstance(getattr(mod, k), list):
                     raw = getattr(mod, k); break
-        ids = [int(e[0]) for e in raw]
+    ids = [ids_util.parse(e[0]) for e in raw]
     items = []
-    for eid in sorted(set(ids)):
+    for eid in sorted({i for i in ids if i is not None}, key=ids_util.key):
         word = CANON.get(eid, "")
         if not word:            # 权威表里没有的编号直接跳过
             continue
@@ -299,8 +299,8 @@ def load_defs():
             if not ln or ln.startswith("#"): continue
             parts = ln.split("|")
             if len(parts) < 2: continue
-            try: eid = int(parts[0].strip())
-            except ValueError: continue
+            eid = ids_util.parse(parts[0].strip())
+            if eid is None: continue
             posdefs = parse_posdefs(parts[1].strip())
             chg = normalize_mark(parts[2]) if len(parts) > 2 and parts[2].strip() else ""
             tail = parts[3].strip() if len(parts) > 3 else ""
@@ -332,7 +332,7 @@ def apply_defs(items):
             pd, note = defs, ""
             chg = chg or auto_change(CANON.get(eid, word))
         out.append((eid, word, pd, chg, note))
-    out.sort(key=lambda x: x[0])          # 全文统一按编号升序
+    out.sort(key=lambda x: ids_util.key(x[0]))   # 编号升序，子编号紧随主编号之后
     return out
 
 def auto_change(word):

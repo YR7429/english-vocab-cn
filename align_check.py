@@ -9,6 +9,8 @@
 """
 import json, re, os, sys
 
+import ids_util
+
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.abspath(__file__))
 JSONP = os.path.join(ROOT, "step4_wordlist.json")
@@ -40,9 +42,11 @@ def load_defs():
     for fn in sorted(os.listdir(folder)):
         if not fn.endswith(".txt"): continue
         for ln in open(os.path.join(folder, fn), encoding="utf-8"):
-            m = re.match(r"^(\d+)\|(.*?)\|(.*?)\|(.*)$", ln.rstrip("\n"))
+            m = re.match(r"^([\d-]+)\|(.*?)\|(.*?)\|(.*)$", ln.rstrip("\n"))
             if m:
-                d.setdefault(int(m.group(1)), m.group(2))
+                eid = ids_util.parse(m.group(1))
+                if eid is not None:
+                    d.setdefault(eid, m.group(2))
     return d
 
 def main():

@@ -13,6 +13,7 @@
   python authority.py check     只校验 词形表.txt 是否与 json 一致
 """
 import os, re, sys, json, hashlib, shutil
+import ids_util
 
 sys.stdout.reconfigure(encoding="utf-8")
 TABLE = os.path.dirname(os.path.abspath(__file__))
@@ -21,11 +22,11 @@ JSONP = os.path.join(WS, "step4_wordlist.json")
 VIEWP = os.path.join(TABLE, "词形表.txt")
 HASHP = os.path.join(TABLE, ".词形表.hash")
 
-# 词条排列顺序：Day1..Day30, 然后新增
+# 词条排列顺序：Day1..Day30, 然后新增；同一编号下子编号排在主编号之后
 def sort_key(t):
     d = t.get("day", "")
     n = 999 if d == "新增" else int(re.sub(r"\D", "", d) or 0)
-    return (0 if d != "新增" else 1, n, t["id"])
+    return (0 if d != "新增" else 1, n, ids_util.key(t["id"]))
 
 def load_json():
     return json.load(open(JSONP, encoding="utf-8"))
@@ -35,7 +36,7 @@ def save_json(data):
     data = sorted(data, key=sort_key)
     # 每个对象内部保持字段顺序：核心字段在前
     order = ["id", "word", "final", "day", "tier_use", "tier_kc", "tier_src",
-             "star_raw", "line", "note", "conf", "needs_review"]
+             "star_raw", "line", "note", "how", "conf", "needs_review"]
     out = []
     for t in data:
         o = {}
@@ -49,7 +50,7 @@ def save_json(data):
         f.write("\n")
 
 def view_rows(data):
-    """生成可编辑视图的行：编号 | 词形 | 星级 | 是否改动"""
+    """生成可编辑视图的行：编号 | 词形 | 星级"""
     rows = []
     for t in sorted(data, key=sort_key):
         w = t.get("final") or t.get("word") or ""
@@ -64,7 +65,7 @@ def write_view(data):
         "# 词形表（可编辑）\n"
         "#\n"
         "# 这是唯一可以手工编辑的权威数据文件。格式：编号 <TAB> 词形 <TAB> 星级\n"
-        "#   - 编号：不要改\n"
+        "#   - 编号：不要改（子编号形如 1840-1，表示一个词形拆成的第 1 条）\n"
         "#   - 词形：可以改（改错别字、补损坏条目、统一拼写）\n"
         "#   - 星级：不要改（由课标核对结果决定）\n"
         "#\n"
@@ -77,18 +78,22 @@ def write_view(data):
     return h, len(view_rows(data))
 
 def read_view():
-    """读回视图，返回 {编号: 词形}；忽略 # 注释行"""
+    """读回视图，返回 {编号: 词形}；忽略 # 注释行。编号可以是 993 或 1840-1"""
     if not os.path.exists(VIEWP):
         return None
     rows = {}
+    bad = []
     for ln in open(VIEWP, encoding="utf-8"):
         s = ln.rstrip("\n")
         if not s.strip() or s.lstrip().startswith("#"): continue
         parts = s.split("\t")
         if len(parts) < 2: continue
-        try: eid = int(parts[0].strip())
-        except ValueError: continue
+        eid = ids_util.parse(parts[0].strip())
+        if eid is None:
+            bad.append(parts[0].strip()); continue
         rows[eid] = parts[1].strip()
+    for b in bad[:5]:
+        print(f"   [忽略] 无法识别的编号：{b!r}")
     return rows
 
 def current_hash():
@@ -139,7 +144,8 @@ def rebuild_skeletons(data):
     os.makedirs(outdir, exist_ok=True)
     n = 0
     for num in range(1, 32):
-        sel = sorted(i for i, d in DAY.items() if (d == "新增" and num == 31) or d == f"Day{num}")
+        sel = sorted((i for i, d in DAY.items() if (d == "新增" and num == 31) or d == f"Day{num}"),
+                     key=ids_util.key)
         if not sel: continue
         title = "新增词汇" if num == 31 else f"Day {num} · 考纲第 {sel[0]}-{sel[-1]} 词"
         L = ["# -*- coding: utf-8 -*-", Q3, title,
@@ -147,7 +153,9 @@ def rebuild_skeletons(data):
              "释义、变化、备注全部来自 defs/ 目录下对应的释义文件。", "",
              "要修订内容，请编辑 defs/ 里的释义文件，不要改本文件。", Q3, "ITEMS = ["]
         for i in sel:
-            L.append(f"({i}, {AUTH[i]!r}),")
+            # 子编号（1840-1）必须写成字符串字面量，否则 (1840-1, 'bound')
+            # 会被 Python 当成算术表达式，求值成 1839
+            L.append(f"({i!r}, {AUTH[i]!r}),")
         L.append("]")
         open(os.path.join(outdir, f"Day{num:02d}.py"), "w", encoding="utf-8", newline="\n").write("\n".join(L) + "\n")
         n += 1
