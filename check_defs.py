@@ -9,6 +9,7 @@
   4. 覆盖到哪一天、还缺哪些编号
 """
 import os, re, sys, json, glob
+import ids_util
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.path.dirname(os.path.abspath(__file__))   # 本脚本所在目录，换机器无需修改
 
@@ -23,6 +24,9 @@ POS_OK = re.compile(r"^(linking v\.|modal v\.|aux\. v\.|"
                     r"vt\.&vi\.|vi\.&vt\.|vt\.|vi\.|v\.|"
                     r"adj\.|adv\.|conj\.|prep\.|pron\.|det\.|num\.|int\.)$")
 
+# 释义还没写的条目，第2段统一写这个占位符（不算错，单独统计）
+PENDING = "（待补）"
+
 def load():
     """返回 {编号: [(文件名, 行号, 分段), ...]}；同时记录分段数异常的行"""
     rows, badfmt = {}, []
@@ -32,21 +36,24 @@ def load():
             ln = ln.rstrip("\n").strip()
             if not ln or ln.startswith("#"): continue
             p = ln.split("|")
-            if not p[0].strip().isdigit(): continue
+            eid = ids_util.parse(p[0].strip())
+            if eid is None: continue
             # 每行应恰好 3 个竖线 -> 4 段；多了少了都会让解析出错位
             if len(p) != 4: badfmt.append((base, i, ln.count("|"), ln[:60]))
-            rows.setdefault(int(p[0]), []).append((base, i, p))
+            rows.setdefault(eid, []).append((base, i, p))
     return rows, badfmt
 
 rows, badfmt = load()
 print(f"defs 覆盖编号数: {len(rows)}")
 
-bad_pos, empty, unknown, dup = [], [], [], []
+bad_pos, empty, unknown, dup, pending = [], [], [], [], []
 for eid, lst in rows.items():
     if len(lst) > 1: dup.append(eid)
     if eid not in WORD_OF: unknown.append(eid)
     fn, lineno, p = lst[0]
     if len(p) < 2 or not p[1].strip(): empty.append((eid, WORD_OF.get(eid), f"{fn}:{lineno}")); continue
+    if p[1].strip() == PENDING:           # 释义待补：不算错，单独计数
+        pending.append((eid, WORD_OF.get(eid), f"{fn}:{lineno}")); continue
     for chunk in p[1].split("/"):
         chunk = chunk.strip()
         if not chunk: continue
@@ -57,6 +64,8 @@ for eid, lst in rows.items():
 print(f"  重复编号: {len(dup)} {dup[:10]}")
 print(f"  权威表外的编号: {len(unknown)} {unknown[:10]}")
 print(f"  第2段为空: {len(empty)} {empty[:10]}")
+print(f"  释义待补（{PENDING}）: {len(pending)}")
+for x in pending[:25]: print("     ", x)
 print(f"  竖线数不是 3 的行: {len(badfmt)}")
 for fn, i, n, seg in badfmt[:25]: print(f"      {fn}:{i}  竖线 {n} 个 | {seg}")
 print(f"  词性不规范: {len(bad_pos)}")
