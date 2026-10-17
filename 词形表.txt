@@ -1,7 +1,7 @@
 # 词形表（可编辑）
 #
 # 这是唯一可以手工编辑的权威数据文件。格式：编号 <TAB> 词形 <TAB> 星级
-#   - 编号：不要改
+#   - 编号：不要改（子编号形如 1840-1，表示一个词形拆成的第 1 条）
 #   - 词形：可以改（改错别字、补损坏条目、统一拼写）
 #   - 星级：不要改（由课标核对结果决定）
 #
@@ -452,7 +452,7 @@
 443	story	0
 444	sympathy	2
 445	postman	0
-446	roof	0
+446	roof	2
 447	temporary	2
 448	economic	2
 449	gun	0
@@ -1488,7 +1488,7 @@
 1479	otherwise	1
 1480	ease	2
 1481	niece	2
-1482	disk (disc)	0
+1482	disk (disc)	2
 1483	wrong	0
 1484	steam	2
 1485	supermarket	0
@@ -1846,7 +1846,8 @@
 1837	ward	2
 1838	pudding	1
 1839	tailor	2
-1840	bound	2
+1840-1	bound	2
+1840-2	bound	2
 1841	satisfy	0
 1842	April	0
 1843	comment	1
@@ -2192,7 +2193,7 @@
 2183	funny	0
 2184	pan	2
 2185	pancake	0
-2186	bean	0
+2186	bean curd	0
 2187	suit	0
 2188	church	2
 2189	succeed	0
@@ -2604,7 +2605,7 @@
 2595	figure	1
 2596	certain	0
 2597	group	0
-2598	（原始文件已损坏，待补）	0
+2598	log	2
 2599	skin	1
 2600	trouble	0
 2601	Monday	0

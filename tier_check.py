@@ -17,8 +17,12 @@ KCP   = os.path.join(ROOT, "考纲词汇含分级.txt")
 PLACEHOLDER = ("待补", "损坏", "无法辨认")
 
 def variants(w):
-    """把 'favour (favor)'、'actor/actress'、'PE (=physical education)' 等
-    拆成课标文件中可能出现的写法。同时归一化弯引号与连字符。"""
+    """把 'favour (favor)'、'actor/actress'、'PE (=physical education)'、
+    'tofu (bean curd)' 等拆成课标文件中可能出现的写法。
+    同时归一化弯引号与连字符。
+
+    括号里的内容也算一种写法：课标的体例是「主词（另一种拼写）」，
+    而本项目的词形有时直接用了括号里的那个（例如 bean curd）。"""
     w = str(w).lower().strip()
     w = w.replace("\u2019", "'").replace("\u2018", "'")   # ’ ‘ -> '
     w = w.replace("\u2010", "-").replace("\u2011", "-").replace("\u2013", "-")
@@ -29,6 +33,10 @@ def variants(w):
         p = p.strip()
         if p:
             out.add(p); out.add(p.replace(" ", ""))
+    for m in re.finditer(r"\(([^)]*)\)", w):
+        inner = m.group(1).strip()
+        if inner and "=" not in inner:
+            out.add(inner); out.add(inner.replace(" ", ""))
     out.add(w.replace(" ", ""))
     return {x for x in out if x}
 

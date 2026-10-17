@@ -92,7 +92,7 @@ ITEMS = [
 (2183, 'funny'),
 (2184, 'pan'),
 (2185, 'pancake'),
-(2186, 'bean'),
+(2186, 'bean curd'),
 (2187, 'suit'),
 (2188, 'church'),
 (2189, 'succeed'),
