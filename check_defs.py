@@ -71,6 +71,41 @@ for fn, i, n, seg in badfmt[:25]: print(f"      {fn}:{i}  竖线 {n} 个 | {seg}
 print(f"  词性不规范: {len(bad_pos)}")
 for x in bad_pos[:25]: print("     ", x)
 
+# ---------------- 编号体检 ----------------
+# 编号是全表的主键：重号会让构建静默丢一条，空号说明还原时漏了词。
+from collections import Counter
+
+ALL_IDS = [t["id"] for t in AUTH]
+CNT = Counter(str(i) for i in ALL_IDS)
+DUP_AUTH = sorted([k for k, v in CNT.items() if v > 1], key=ids_util.key)
+PLAIN = {i for i in ALL_IDS if isinstance(i, int)}
+SUBS = sorted([i for i in ALL_IDS if ids_util.is_sub(i)], key=ids_util.key)
+PARENTS = {int(str(s).split("-")[0]) for s in SUBS}
+TOP = max(PLAIN) if PLAIN else 0
+# 空号：1..TOP 里既没有主编号、也没有子编号接替它
+GAPS = [i for i in range(1, TOP + 1) if i not in PLAIN and i not in PARENTS]
+BAD_SUBS = []
+for p in sorted(PARENTS):
+    got = sorted(int(str(s).split("-")[1]) for s in SUBS if int(str(s).split("-")[0]) == p)
+    if got != list(range(1, len(got) + 1)):
+        BAD_SUBS.append((p, got))
+VIEW_IDS = set()
+_vp = os.path.join(ROOT, "词形表.txt")
+if os.path.exists(_vp):
+    for _ln in open(_vp, encoding="utf-8"):
+        _v = ids_util.parse(_ln.split("\t")[0].strip())
+        if _v is not None: VIEW_IDS.add(_v)
+VIEW_MISSING = [i for i in ALL_IDS if i not in VIEW_IDS]
+
+print("\n编号体检：")
+print(f"  权威表条目 {len(ALL_IDS)} ｜ 唯一编号 {len(CNT)} ｜ 词形表 {len(VIEW_IDS)} 行")
+print(f"  重号: {len(DUP_AUTH)} {DUP_AUTH[:10]}")
+print(f"  空号（1–{TOP}）: {len(GAPS)} {GAPS[:10]}")
+print(f"  被子编号替代的主编号: {len(PARENTS)} {sorted(PARENTS)}")
+print(f"  子编号: {len(SUBS)} {SUBS}")
+if BAD_SUBS:    print(f"  子编号未从 1 起连续: {BAD_SUBS}")
+if VIEW_MISSING: print(f"  词形表缺号: {len(VIEW_MISSING)} {VIEW_MISSING[:10]}")
+
 # 覆盖进度
 have = set(rows)
 print("\n各日覆盖情况：")
