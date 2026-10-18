@@ -26,6 +26,8 @@ r"""
   python build.py D01 D02        # 只构建指定天（不会动总表）
   python build.py --no-pdf       # 不编译 PDF
   python build.py --alpha-only   # 只出字母序总表（核验词形、星级用）
+  python build.py --no-id        # 公开版：不印「编号」列（编号仍在数据里）
+  python build.py --no-id --no-pdf --no-alpha   # 最快的一次公开版
 """
 import sys, os, re, json, glob, subprocess, importlib.util
 import ids_util
@@ -58,6 +60,7 @@ except Exception:
 CN, LAT = None, None           # 由 pick_fonts() 在构建时确定
 INSTALLED = set()              # 本机字体名缓存
 EX_SYM  = "！"          # 全角感叹号 U+FF01：生义标记（❗ ⚠ ▲ △ 统一归到它）
+SHOW_ID = True          # 是否在成品里印「编号」列；--no-id 时关闭（公开版）
 
 def _add_font_names(names, s):
     """把字体名规范化后加入集合。
@@ -465,44 +468,87 @@ TABLE_HEAD = (r"\begin{longtable}{N W D C}" "\n"
               r"\hd{编号} & \hd{原词} & \hd{义项} & \hd{变化} \\" "\n"
               r"\midrule" "\n"
               r"\endhead" "\n")
+
+# 公开版不印编号：临时措施。原有编号仍在数据里，只是不显示。
+TABLE_HEAD_NOID = (r"\begin{longtable}{W D C}" "\n"
+                   r"\toprule" "\n"
+                   r"\hd{原词} & \hd{义项} & \hd{变化} \\" "\n"
+                   r"\midrule" "\n"
+                   r"\endfirsthead" "\n"
+                   r"\toprule" "\n"
+                   r"\hd{原词} & \hd{义项} & \hd{变化} \\" "\n"
+                   r"\midrule" "\n"
+                   r"\endhead" "\n")
+
 STRAY_BOLD = []   # 记录残留 ** 的条目，构建结束时报出
 TABLE_TAIL = "\\bottomrule\n\\end{longtable}\n"
 
+def row_tex(eid, word, defs, chg, note):
+    """一行长表记录；SHOW_ID 决定是否带编号列"""
+    w = tex_escape(word + star_mark(eid))
+    if note: chg = (chg + " " if chg else "") + note
+    d = r" \newline ".join(r"\hd{" + tex_escape(p) + r"}" +
+                           (" " + "；".join(to_tex(x) for x in xs) if p
+                            else " ".join(to_tex(x) for x in xs))
+                           for p, xs in defs)
+    c = to_tex(chg)
+    # 自检：转换后不应残留 ** 标记（通常是粗体标记被分隔符切断）
+    if "**" in d or "**" in c:
+        STRAY_BOLD.append((eid, word))
+    # PDF 版靠 \hline 细线分隔；不用 \rowcolor（会覆盖横线）
+    if SHOW_ID:
+        return f"{eid} & \\textbf{{{w}}} & {d} & {c} \\\\ \\hline"
+    return f"\\textbf{{{w}}} & {d} & {c} \\\\ \\hline"
+
+
 def day_tex(day, title, items, sort=None):
-    """sort=None 时按传入顺序（编号升序）；sort='alpha' 时按字母表排序"""
+    """某一天的片段。sort=None 按编号升序；sort='alpha' 为当天内部字母序"""
     if sort == "alpha":
         items = sorted(items, key=lambda x: alpha_key(x[1]))
     L = [f"% ==== {title} ====\n"]
     L.append(r"\vspace{2mm}{\large\bfseries " + tex_escape(title) + r"}\par\vspace{1.5mm}")
-    L.append(TABLE_HEAD)
-    for i, (eid, word, defs, chg, note) in enumerate(items):
-        w = tex_escape(word + star_mark(eid))
-        if note: chg = (chg + " " if chg else "") + note
-        d = r" \newline ".join(r"\hd{" + tex_escape(p) + r"}" + (" " + "；".join(to_tex(x) for x in xs) if p else " ".join(to_tex(x) for x in xs))
-                               for p, xs in defs)
-        c = to_tex(chg)
-        # 自检：转换后不应残留 ** 标记（通常是粗体标记被分隔符切断）
-        if "**" in d or "**" in c:
-            STRAY_BOLD.append((eid, word))
-        # PDF 版靠 \hline 细线分隔；不用 \rowcolor（会覆盖横线）
-        L.append(f"{eid} & \\textbf{{{w}}} & {d} & {c} \\\\ \\hline")
+    L.append(TABLE_HEAD if SHOW_ID else TABLE_HEAD_NOID)
+    for (eid, word, defs, chg, note) in items:
+        L.append(row_tex(eid, word, defs, chg, note))
     L.append(TABLE_TAIL)
     return "\n".join(L) + "\n"
 
-def write_prelude(path=None, alpha=False):
+
+def flat_tex(items):
+    """整表一张长表：没有「天」的分段标题，用于全局字母序"""
+    L = [TABLE_HEAD if SHOW_ID else TABLE_HEAD_NOID]
+    for (eid, word, defs, chg, note) in items:
+        L.append(row_tex(eid, word, defs, chg, note))
+    L.append(TABLE_TAIL)
+    return "\n".join(L) + "\n"
+
+
+PRELUDE_TITLE = {
+    "day":       "考纲词汇详解总表",
+    "day_alpha": "考纲词汇详解总表 · 按天字母序",
+    "alpha":     "考纲词汇详解总表 · 全局字母序（课标序）",
+}
+
+
+def write_prelude(path=None, kind="day"):
     p = path or os.path.join(TEXDIR, "00_前言.tex")
-    head = (r"{\LARGE\bfseries 考纲词汇详解总表}" if not alpha
-            else r"{\LARGE\bfseries 考纲词汇详解总表（字母序）}")
+    head = (r"{\LARGE\bfseries " + PRELUDE_TITLE.get(kind, PRELUDE_TITLE["day"]) + r"}")
+    note = ""
+    if SHOW_ID:
+        note = (r"\\[1mm]{\small\bfseries 内部编号仅供修订定位：来自于原始资料"
+                r"（AI 生成 + OCR + 手工还原），不对外发布，即将弃用}")
     open(p, "w", encoding="utf-8", newline="\n").write(
         r"\begin{center}" "\n"
         + head + "\\\\[2mm]\n"
         r"{\small 星级：\textbf{**} 最重要\quad\textbf{*} 次之\quad 无星号 最弱\quad|\quad"
         r"\EX{} 无法联想的熟词生义\quad|\quad \textbf{黑体} 可联想的引申义}" "\n"
+        + note + "\n"
         r"\end{center}" "\n"
         r"\vspace{2mm}" "\n")
     return p
 
-def write_master(days, path=None, alpha=False, prelude="00_前言"):
+
+def write_master(days, path=None, prelude="00_前言"):
     """总表：只引用各天的片段，内容不重复维护"""
     p = path or os.path.join(TEXDIR, "总表.tex")
     L = [preamble(), r"\input{" + prelude + "}", "\n"]
@@ -513,11 +559,37 @@ def write_master(days, path=None, alpha=False, prelude="00_前言"):
     open(p, "w", encoding="utf-8", newline="\n").write("\n".join(L))
     return p
 
+
+def write_flat(items, path, prelude):
+    """全局字母序：整表一张长表，不分天"""
+    L = [preamble(), r"\input{" + prelude + "}", flat_tex(items), r"\end{document}"]
+    open(path, "w", encoding="utf-8", newline="\n").write("\n".join(L))
+    return path
+
+
 # ---------------- DOCX ----------------
-def build_docx(title, items, path, sort=None, merged_note=""):
-    """sort=None 按传入顺序；sort='alpha' 按字母表排序"""
-    if sort == "alpha":
-        items = sorted(items, key=lambda x: alpha_key(x[1]))
+def _heading_row(t, text, ncols):
+    """在 Word 表格里插一行跨列的「天」标题"""
+    row = t.add_row()
+    cell = row.cells[0]
+    if ncols > 1:
+        cell = cell.merge(row.cells[ncols - 1])
+    p = cell.paragraphs[0]
+    p.paragraph_format.space_before = Pt(3); p.paragraph_format.space_after = Pt(1)
+    p.paragraph_format.line_spacing = Pt(13)
+    _font(p.add_run(text), 9.5, True)
+    sh = OxmlElement("w:shd"); sh.set(qn("w:val"), "clear"); sh.set(qn("w:fill"), "DCE6F1")
+    cell._tc.get_or_add_tcPr().append(sh)
+
+
+def build_docx(title, path, items=None, sort=None, sections=None):
+    """sections = [(小节标题 或 None, items), ...]
+    传 sections 时按小节分段（可插天标题）；否则用 items（可整体按字母序）"""
+    if sections is None:
+        items = list(items or [])
+        if sort == "alpha":
+            items = sorted(items, key=lambda x: alpha_key(x[1]))
+        sections = [(None, items)]
     doc = Document()
     sec = doc.sections[0]
     sec.page_width, sec.page_height = Cm(21.0), Cm(29.7)
@@ -535,14 +607,23 @@ def build_docx(title, items, path, sort=None, merged_note=""):
     p.paragraph_format.space_after = Pt(1)
     r = p.add_run(title); _font(r, 14, True)
     p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_after = Pt(4)
+    p.paragraph_format.space_after = Pt(2)
     _font(p.add_run("词性：n. [C] 可数 / n. [U] 不可数 / vt. 及物 / vi. 不及物 / linking v. 连系动词　｜　"
                     + EX_SYM + " 无法联想的熟词生义　｜　"), 8)
     _font(p.add_run("黑体"), 8, True)
     _font(p.add_run(" 可联想的引申义"), 8)
+    if SHOW_ID:
+        p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_after = Pt(3)
+        _font(p.add_run("内部编号仅供修订定位，不对外发布，即将弃用"), 8, True)
 
-    W = [0.85, 2.85, 9.5, 3.4]
-    t = doc.add_table(rows=1, cols=4)
+    if SHOW_ID:
+        W = [0.85, 2.85, 9.5, 3.4]
+        HDR = ["编号", "原词", "义项", "变化"]
+    else:                                  # 公开版：不印编号，把宽度让给词形与义项
+        W = [2.85, 9.9, 3.75]
+        HDR = ["原词", "义项", "变化"]
+    t = doc.add_table(rows=1, cols=len(W))
     t.style = "Table Grid"; t.alignment = WD_TABLE_ALIGNMENT.CENTER; t.autofit = False
     mar = OxmlElement("w:tblCellMar")
     for tag, val in (("top",12),("left",60),("bottom",12),("right",60)):
@@ -550,7 +631,7 @@ def build_docx(title, items, path, sort=None, merged_note=""):
     t._tbl.tblPr.append(mar)
     trPr = t.rows[0]._tr.get_or_add_trPr()
     th = OxmlElement("w:tblHeader"); th.set(qn("w:val"), "true"); trPr.append(th)
-    for i, h in enumerate(["编号", "原词", "义项", "变化"]):
+    for i, h in enumerate(HDR):
         cell = t.rows[0].cells[i]
         q = cell.paragraphs[0]; q.alignment = WD_ALIGN_PARAGRAPH.CENTER
         q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0)
@@ -559,29 +640,40 @@ def build_docx(title, items, path, sort=None, merged_note=""):
         sh = OxmlElement("w:shd"); sh.set(qn("w:val"),"clear"); sh.set(qn("w:fill"),"E6E6E6")
         cell._tc.get_or_add_tcPr().append(sh)
 
-    for idx, (eid, word, defs, chg, note) in enumerate(items):
-        if note: chg = (chg + " " if chg else "") + note
-        row = t.add_row().cells
-        if idx % 2 == 1:                       # 隔行浅灰，防止读串行
-            for c in row:
-                sh = OxmlElement("w:shd"); sh.set(qn("w:val"), "clear"); sh.set(qn("w:fill"), "F2F2F2")
-                c._tc.get_or_add_tcPr().append(sh)
-        q = row[0].paragraphs[0]; q.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
-        _font(q.add_run(str(eid)), 8.5)
-        q = row[1].paragraphs[0]; q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
-        _font(q.add_run(word + star_mark(eid)), 9.5, True)
-        q = row[2].paragraphs[0]; q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
-        first = True
-        for pos, xs in defs:
-            if not first: q.add_run().add_break()
-            first = False
-            if pos: _font(q.add_run(pos + " "), 9.5)
-            to_docx_runs(q, "；".join(xs), 9.5)
-        q = row[3].paragraphs[0]; q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
-        if chg: to_docx_runs(q, chg, 8.5)
+    n = 0
+    for sec_title, sec_items in sections:
+        if sec_title:
+            _heading_row(t, sec_title, len(W))
+        for (eid, word, defs, chg, note) in sec_items:
+            if note: chg = (chg + " " if chg else "") + note
+            row = t.add_row().cells
+            if n % 2 == 1:                     # 隔行浅灰，防止读串行
+                for c in row:
+                    sh = OxmlElement("w:shd"); sh.set(qn("w:val"), "clear"); sh.set(qn("w:fill"), "F2F2F2")
+                    c._tc.get_or_add_tcPr().append(sh)
+            n += 1
+            off = 1 if SHOW_ID else 0
+            if SHOW_ID:
+                q = row[0].paragraphs[0]; q.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
+                _font(q.add_run(str(eid)), 8.5)
+            q = row[off].paragraphs[0]; q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
+            _font(q.add_run(word + star_mark(eid)), 9.5, True)
+            q = row[off + 1].paragraphs[0]; q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
+            first = True
+            for pos, xs in defs:
+                if not first: q.add_run().add_break()
+                first = False
+                if pos: _font(q.add_run(pos + " "), 9.5)
+                to_docx_runs(q, "；".join(xs), 9.5)
+            q = row[off + 2].paragraphs[0]; q.paragraph_format.space_before = Pt(0); q.paragraph_format.space_after = Pt(0); q.paragraph_format.line_spacing = Pt(12)
+            if chg: to_docx_runs(q, chg, 8.5)
     for row in t.rows:
-        for i, w in enumerate(W): row.cells[i].width = Cm(w)
+        try:
+            for i, w in enumerate(W):
+                if i < len(row.cells): row.cells[i].width = Cm(w)
+        except Exception:
+            pass
     # grid
     tbl = t._tbl
     old = tbl.find(qn("w:tblGrid"))
@@ -594,6 +686,7 @@ def build_docx(title, items, path, sort=None, merged_note=""):
     tbl.tblPr.append(tw)
     ly = OxmlElement("w:tblLayout"); ly.set(qn("w:type"), "fixed"); tbl.tblPr.append(ly)
     doc.save(path)
+
 
 # ---------------- PDF 编译（可选步骤，失败不影响 tex/ 与 docx/ 的产出） ----------------
 def compile_pdf(tex_name, out_name):
@@ -620,6 +713,7 @@ def compile_pdf(tex_name, out_name):
     print("  （tex/ 与 docx/ 已正常生成，可先使用；字体问题请检查 fonts.json）")
     return None
 
+
 def no_tex_hint():
     print("\n" + "=" * 68)
     print("  未找到 xelatex —— 已跳过 PDF 生成（其他产物不受影响）")
@@ -632,12 +726,40 @@ def no_tex_hint():
     print("      也可用环境变量指定路径：XELATEX=<xelatex 的完整路径>")
     print("=" * 68 + "\n")
 
+
 # ---------------- 主流程 ----------------
+def ask_show_id(argv):
+    """决定这一版印不印内部编号"""
+    if "--with-id" in argv: return True
+    if "--no-id" in argv:   return False
+    bar = "=" * 68
+    if "--no-prompt" in argv or not sys.stdin.isatty():
+        print(f"\n  {bar}")
+        print("  未指定版本，按公开版（不印编号）构建。要修订版请加 --with-id")
+        print(f"  {bar}")
+        return False
+    print("\n" + bar)
+    print("  要生成哪一个版本？")
+    print("    1) 公开版　不印原始编号，读者用、随 Release 发布　【回车默认】")
+    print("    2) 修订版　印原始编号，仅供修订定位")
+    print(bar)
+    try:
+        ans = input("  输入 1 或 2：").strip()
+    except EOFError:
+        ans = ""
+    if ans == "2":
+        print("\n  ⚠ 修订版使用原始编号。该编号来自原始资料（AI 生成 + OCR + 手工还原），")
+        print("    仅供修订定位，不对外发布，且即将弃用。\n")
+        return True
+    return False
+
+
 def main():
-    argv   = sys.argv[1:]
+    argv = sys.argv[1:]
     no_pdf = "--no-pdf" in argv
-    only_alpha = "--alpha-only" in argv
-    no_alpha   = "--no-alpha" in argv
+    global SHOW_ID
+    SHOW_ID = ask_show_id(argv)
+    suf = "_修订" if SHOW_ID else ""
     args = [a for a in argv if not a.startswith("--")]
 
     # 构建前提示：是否有条目的星级判定待重算（只提示，不中断）
@@ -655,51 +777,63 @@ def main():
     pick_fonts()
     if CN or LAT:
         print(f"  字体：中文 {CN or '（未找到，见 fonts.json）'} ｜ 拉丁 {LAT or '（未找到，见 fonts.json）'}")
+    print(f"  版本：{'修订版（印内部编号）' if SHOW_ID else '公开版（不印编号）'}")
 
-    keys  = [k for k in sorted(srcs) if not args or k in args]
-    days, allitems = [], []
+    keys = [k for k in sorted(srcs) if not args or k in args]
+    days, allitems, per_day = [], [], {}
     for k in keys:
         items = load_day(srcs[k])
         id0, id1 = items[0][0], items[-1][0]
         title = "新增词汇" if k == "D31" else f"{k} · 考纲第 {id0}-{id1} 词"
         allitems += items
-        open(os.path.join(TEXDIR, k + ".tex"), "w", encoding="utf-8", newline="\n") \
+        per_day[k] = (title, items)
+        open(os.path.join(TEXDIR, f"{k}{suf}.tex"), "w", encoding="utf-8", newline="\n") \
             .write(day_tex(k, title, items))
-        build_docx(title, items, os.path.join(DOCX, f"{k}_词汇表.docx"))
+        open(os.path.join(TEXDIR, f"A_{k}{suf}.tex"), "w", encoding="utf-8", newline="\n") \
+            .write(day_tex(k, title, items, sort="alpha"))
+        build_docx(title, os.path.join(DOCX, f"{k}_词汇表{suf}.docx"), items=items)
         days.append(k)
-        print(f"  {k}: {len(items)} 词 -> tex/{k}.tex, docx/{k}_词汇表.docx")
+        print(f"  {k}: {len(items)} 词")
 
     # 总表只在「全量构建」时生成。若只是重建某几天（python build.py D04），
     # 只更新那几天的片段，否则会把总表覆盖成残缺版本。
-    partial = bool(args) and not only_alpha
+    partial = bool(args)
+    span = "Day " + "–".join([days[0][1:], days[-1][1:]]) if days else ""
     if partial:
-        print(f"\n  只重建了 {', '.join(days)}；tex/总表.tex 与 docx/总表.docx 未改动。")
-        print("  要更新总表（合并全部 31 天），请运行：python build.py")
+        print(f"\n  只重建了 {', '.join(days)}；三份总表与总表 DOCX 均未改动。")
+        print("  要更新总表，请运行：python build.py")
     else:
-        span = "Day " + "–".join([days[0][1:], days[-1][1:]])
-        if not only_alpha:
-            write_prelude()
-            write_master(days)
-            print(f"  总表: tex/总表.tex （\\input {len(days)} 个片段，按编号升序）")
-            build_docx("考纲词汇详解总表（" + span + "）", allitems,
-                       os.path.join(DOCX, "总表.docx"))
-            print(f"  合并 DOCX: docx/总表.docx （{len(allitems)} 词）")
-        if not no_alpha:
-            # 字母序版本：同样是 \input 引用，只是各片段内部改成按字母表排序
-            write_prelude(os.path.join(TEXDIR, "00_前言_字母序.tex"), alpha=True)
-            for k in days:
-                items = load_day(srcs[k])
-                id0, id1 = items[0][0], items[-1][0]
-                title = "新增词汇" if k == "D31" else f"{k} · 考纲第 {id0}-{id1} 词"
-                open(os.path.join(TEXDIR, "A_" + k + ".tex"), "w", encoding="utf-8", newline="\n") \
-                    .write(day_tex(k, title, items, sort="alpha"))
-            write_master(["A_" + k for k in days],
-                         path=os.path.join(TEXDIR, "总表_字母序.tex"),
-                         alpha=True, prelude="00_前言_字母序")
-            print(f"  字母序总表: tex/总表_字母序.tex （{len(allitems)} 词，全局 A→Z）")
-            build_docx("考纲词汇详解总表 · 字母序（" + span + "）", allitems,
-                       os.path.join(DOCX, "总表_字母序.docx"), sort="alpha")
-            print(f"  合并 DOCX: docx/总表_字母序.docx （{len(allitems)} 词）")
+        # ① 按天（编号序）
+        p1 = write_prelude(os.path.join(TEXDIR, f"00_前言{suf}.tex"), kind="day")
+        m1 = f"总表{suf}"
+        write_master([f"{k}{suf}" for k in days],
+                     path=os.path.join(TEXDIR, m1 + ".tex"),
+                     prelude=os.path.splitext(os.path.basename(p1))[0])
+        build_docx(PRELUDE_TITLE["day"] + f"（{span}）",
+                   os.path.join(DOCX, m1 + ".docx"), items=allitems)
+        print(f"  ① 按天：tex/{m1}.tex ＋ docx/{m1}.docx （{len(allitems)} 词）")
+
+        # ② 按天字母序（保留天分段，天内 A→Z）
+        p2 = write_prelude(os.path.join(TEXDIR, f"00_前言_按天字母序{suf}.tex"), kind="day_alpha")
+        m2 = f"总表_按天字母序{suf}"
+        write_master([f"A_{k}{suf}" for k in days],
+                     path=os.path.join(TEXDIR, m2 + ".tex"),
+                     prelude=os.path.splitext(os.path.basename(p2))[0])
+        build_docx(PRELUDE_TITLE["day_alpha"] + f"（{span}）",
+                   os.path.join(DOCX, m2 + ".docx"),
+                   sections=[(per_day[k][0], sorted(per_day[k][1], key=lambda x: alpha_key(x[1])))
+                             for k in days])
+        print(f"  ② 按天字母序：tex/{m2}.tex ＋ docx/{m2}.docx （天内 A→Z，保留天分段）")
+
+        # ③ 全局字母序（课标序）：整表一张长表
+        p3 = write_prelude(os.path.join(TEXDIR, f"00_前言_字母序{suf}.tex"), kind="alpha")
+        m3 = f"总表_字母序{suf}"
+        write_flat(sorted(allitems, key=lambda x: alpha_key(x[1])),
+                   os.path.join(TEXDIR, m3 + ".tex"),
+                   prelude=os.path.splitext(os.path.basename(p3))[0])
+        build_docx(PRELUDE_TITLE["alpha"] + f"（{span}）",
+                   os.path.join(DOCX, m3 + ".docx"), items=allitems, sort="alpha")
+        print(f"  ③ 全局字母序：tex/{m3}.tex ＋ docx/{m3}.docx （全表 A→Z，不分天）")
 
     if STRAY_BOLD:
         bar = "=" * 68
@@ -715,7 +849,6 @@ def main():
     if no_pdf:
         print("\n  （--no-pdf：已跳过 PDF 编译。tex/ 与 docx/ 均已生成。）")
         return
-
     if partial:
         print("\n  （只重建了部分天，未编译 PDF。要出成品请运行：python build.py）")
         return
@@ -726,10 +859,8 @@ def main():
         no_tex_hint()
         return
     warn_missing_glyphs()
-    if not only_alpha:
-        compile_pdf("总表.tex", "总表.pdf")
-    if not no_alpha:
-        compile_pdf("总表_字母序.tex", "总表_字母序.pdf")
+    for base in (f"总表{suf}", f"总表_按天字母序{suf}", f"总表_字母序{suf}"):
+        compile_pdf(base + ".tex", base + ".pdf")
 
 if __name__ == "__main__":
     main()
