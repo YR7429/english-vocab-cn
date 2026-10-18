@@ -37172,23 +37172,23 @@
  },
  {
   "id": "1840-1",
-  "word": "bound",
-  "final": "bound",
+  "word": "bind",
+  "final": "bind",
   "day": "Day19",
-  "tier_use": 2,
-  "tier_kc": 2,
-  "tier_src": "课标",
-  "star_raw": 2,
+  "tier_use": 0,
+  "tier_kc": null,
+  "tier_src": "原文星号",
+  "star_raw": 0,
   "line": 401,
-  "note": "由 1840.bound 拆分：bind 的过去式、过去分词",
-  "how": "由 1840.bound 拆分：bind 的过去式、过去分词",
+  "note": "课标未收录 bind；由 1840.bound 拆出",
+  "how": "由 1840.bound 拆出：动词 bind（过去式/过去分词 bound）",
   "conf": "确定",
   "needs_review": false,
-  "norm": "bound",
+  "norm": "bind",
   "mixed_case": false,
   "pile": "A",
-  "kc": "bound",
-  "tier": 2
+  "kc": null,
+  "tier": 0
  },
  {
   "id": "1840-2",
@@ -64565,5 +64565,20 @@
   "pile": "A",
   "kc": "yield",
   "tier": 2
+ },
+ {
+  "id": 3186,
+  "word": "BCE (Before the Common Era)",
+  "final": "BCE (Before the Common Era)",
+  "day": "新增",
+  "tier_use": 2,
+  "tier_kc": 2,
+  "tier_src": "课标",
+  "star_raw": 2,
+  "line": 274,
+  "note": "补录：课标有、原词表缺",
+  "how": "补录：课标有、原词表缺",
+  "conf": "确定",
+  "needs_review": false
  }
 ]

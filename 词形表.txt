@@ -1846,7 +1846,7 @@
 1837	ward	2
 1838	pudding	1
 1839	tailor	2
-1840-1	bound	2
+1840-1	bind	0
 1840-2	bound	2
 1841	satisfy	0
 1842	April	0
@@ -3193,3 +3193,4 @@
 3183	wetland	1
 3184	wolf	0
 3185	yield	2
+3186	BCE (Before the Common Era)	2
