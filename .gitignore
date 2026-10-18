@@ -24,3 +24,8 @@ desktop.ini
 *.log
 *.out
 *.toc
+
+# 校对台的进度与备份（本机用，不入库）
+校对进度.json
+*.bak
+*.bak.*
