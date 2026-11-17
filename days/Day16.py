@@ -54,7 +54,7 @@ ITEMS = [
 (1545, 'breakfast'),
 (1546, 'detail'),
 (1547, 'vary'),
-(1548, 'so'),
+(1548, 'soon'),
 (1549, 'careful'),
 (1550, 'according (to)'),
 (1551, 'low'),
